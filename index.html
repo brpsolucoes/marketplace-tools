@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <title>Calculadora Shopee - BRP Soluções</title>
+    <meta name="description" content="Calcule o preço de venda ideal para a Shopee com taxas dinâmicas baseadas no valor do item.">
+    
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com; img-src 'self' data:; connect-src 'self';">
+    <meta http-equiv="X-Frame-Options" content="DENY">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .slide-in { animation: slideIn 0.3s ease-out; }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 220px;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 10px;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -110px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 12px;
+            line-height: 1.4;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+        .loading { opacity: 0.6; pointer-events: none; }
+        .value-transition { transition: all 0.3s ease; }
+        
+        /* Responsividade */
+        @media (max-width: 640px) {
+            .container-calculadora {
+                padding: 1.5rem;
+                margin: 1rem;
+            }
+            .tooltip .tooltiptext {
+                width: 180px;
+                margin-left: -90px;
+                font-size: 11px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .container-calculadora {
+                padding: 1rem;
+                margin: 0.5rem;
+            }
+            h1 {
+                font-size: 1.5rem;
+            }
+            .tooltip .tooltiptext {
+                width: 160px;
+                margin-left: -80px;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4 font-sans text-gray-800">
+
+    <div class="container-calculadora bg-white shadow-2xl rounded-2xl p-8 w-full max-w-lg border-t-8 border-orange-500">
+        <h1 class="text-2xl md:text-3xl font-black text-center mb-8 uppercase tracking-tight">Calculadora Shopee</h1>
+        
+        <div class="space-y-6">
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-sm font-bold uppercase">Custo do Produto (R$)</label>
+                    <div class="tooltip">
+                        <i class="fas fa-info-circle text-gray-400 text-sm"></i>
+                        <span class="tooltiptext">Custo total para adquirir ou produzir o produto</span>
+                    </div>
+                </div>
+                <input type="number" id="custo" placeholder="0,00" step="0.01" min="0" aria-label="Custo do produto em reais"
+                    class="w-full px-3 py-3 text-base bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none transition font-medium">
+                <span id="erro-custo" class="text-red-500 text-sm mt-2 hidden">Valor deve ser maior que 0</span>
+            </div>
+
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-sm font-bold uppercase">Tipo de Vendedor</label>
+                    <div class="tooltip">
+                        <i class="fas fa-info-circle text-gray-400 text-sm"></i>
+                        <span class="tooltiptext">CNPJ: Padrão | CPF: Taxa extra se >450 pedidos/90 dias</span>
+                    </div>
+                </div>
+                <div class="flex bg-gray-100 p-1 rounded-xl">
+                    <button onclick="setVendedor('cnpj')" id="btn-cnpj" class="flex-1 py-2 px-3 rounded-lg text-sm font-bold transition bg-white shadow-sm text-orange-600">CNPJ</button>
+                    <button onclick="setVendedor('cpf')" id="btn-cpf" class="flex-1 py-2 px-3 rounded-lg text-sm font-bold transition text-gray-500">CPF</button>
+                </div>
+            </div>
+
+            <div id="container-volume-pedidos" class="hidden">
+                <label class="flex items-center space-x-3 text-sm cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition">
+                    <input type="checkbox" id="volume-pedidos" class="w-4 h-4 rounded text-orange-500 focus:ring-orange-500">
+                    <span>Mais de 450 pedidos em 90 dias</span>
+                    <div class="tooltip">
+                        <i class="fas fa-info-circle text-gray-400 text-sm"></i>
+                        <span class="tooltiptext">Acréscimo de R$ 3,00 por item para vendedores CPF com alto volume</span>
+                    </div>
+                </label>
+            </div>
+
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-sm font-bold uppercase">Tipo de Lucro</label>
+                    <div class="tooltip">
+                        <i class="fas fa-info-circle text-gray-400 text-sm"></i>
+                        <span class="tooltiptext">Escolha entre valor fixo ou porcentagem sobre o custo</span>
+                    </div>
+                </div>
+                <div class="flex bg-gray-100 p-1 rounded-xl">
+                    <button onclick="setTipo('valor')" id="btn-valor" class="flex-1 py-2 px-3 rounded-lg text-sm font-bold transition bg-white shadow-sm text-orange-600">R$ Fixo</button>
+                    <button onclick="setTipo('porcentagem')" id="btn-porcentagem" class="flex-1 py-2 px-3 rounded-lg text-sm font-bold transition text-gray-500">Porcentagem %</button>
+                </div>
+            </div>
+
+            <div>
+                <div class="flex justify-between items-center mb-2">
+                    <div class="flex items-center space-x-2">
+                        <label id="label-lucro" class="text-sm font-bold uppercase">Lucro Desejado (R$)</label>
+                        <div class="tooltip">
+                            <i class="fas fa-info-circle text-gray-400 text-sm"></i>
+                            <span class="tooltiptext">Valor que você deseja ganhar por venda</span>
+                        </div>
+                    </div>
+                    <span id="lucro-convertido" class="text-sm font-bold text-orange-500 hidden italic"></span>
+                </div>
+                <input type="number" id="lucro" placeholder="0,00" step="0.01" min="0" aria-label="Lucro desejado em reais"
+                    class="w-full px-3 py-3 text-base bg-gray-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 outline-none transition font-medium">
+                <span id="erro-lucro" class="text-red-500 text-sm mt-2 hidden">Valor deve ser maior ou igual a 0</span>
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-gray-100">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-sm font-bold uppercase text-blue-600">ROAS Atual do Ads (Opcional)</label>
+                    <div class="tooltip">
+                        <i class="fas fa-info-circle text-blue-400 text-sm"></i>
+                        <span class="tooltiptext">Retorno sobre investimento em anúncios. Ex: 3.5 = R$ 3,50 vendidos por R$ 1,00 investido</span>
+                    </div>
+                </div>
+                <input type="number" id="roas-input" placeholder="Ex: 3.5" step="0.1" min="0" aria-label="ROAS atual dos anúncios"
+                    class="w-full px-3 py-3 text-base bg-blue-50 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition font-medium">
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-gray-100">
+                <label class="flex items-center space-x-3 text-sm cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition">
+                    <input type="checkbox" id="campanha-destaque" class="w-4 h-4 rounded text-orange-500 focus:ring-orange-500">
+                    <span>Participar de "Campanhas de Destaque"</span>
+                    <div class="tooltip">
+                        <i class="fas fa-info-circle text-gray-400 text-sm"></i>
+                        <span class="tooltiptext">Acréscimo de 2,5% na comissão durante campanhas promocionais</span>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <div class="mt-10 bg-orange-50 p-8 rounded-2xl border border-orange-100 space-y-4">
+            <div class="flex justify-between text-base">
+                <span class="text-gray-600 font-semibold">Taxas Shopee:</span>
+                <span id="taxa-total" class="font-bold text-red-500">R$ 0,00</span>
+            </div>
+            <div id="detalhes-taxas" class="text-sm text-gray-500 space-y-2"></div>
+            
+            <div class="flex justify-between items-center border-t border-orange-200 pt-6">
+                <div class="flex items-center space-x-2">
+                    <span class="text-lg font-bold">Preço de Venda:</span>
+                    <div class="tooltip">
+                        <i class="fas fa-info-circle text-orange-400 text-sm"></i>
+                        <span class="tooltiptext">Preço ideal para atingir seu lucro desejado após todas as taxas</span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-3">
+                    <span id="preco-venda" class="text-3xl font-black text-orange-600 value-transition">R$ 0,00</span>
+                    <button onclick="copiarPreco(event)" class="tooltip p-3 hover:bg-orange-100 rounded-xl transition">
+                        <i class="fas fa-copy text-orange-500 text-lg"></i>
+                        <span class="tooltiptext">Copiar preço</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center border-t border-orange-200 pt-4">
+                <div class="flex items-center space-x-2">
+                    <span class="text-gray-600 font-bold italic underline">Ponto de Equilíbrio (Ads):</span>
+                    <div class="tooltip">
+                        <i class="fas fa-info-circle text-blue-400 text-sm"></i>
+                        <span class="tooltiptext">ROAS mínimo para não ter prejuízo com anúncios</span>
+                    </div>
+                </div>
+                <span id="roas-ideal" class="font-bold text-blue-600 value-transition text-lg">0.0x</span>
+            </div>
+
+            <div class="flex justify-between items-center">
+                <div class="flex items-center space-x-2">
+                    <span class="text-gray-600 italic uppercase text-sm">Custo por Venda:</span>
+                    <div class="tooltip">
+                        <i class="fas fa-info-circle text-blue-400 text-sm"></i>
+                        <span class="tooltiptext">Quanto gastar em ads por venda com seu ROAS atual</span>
+                    </div>
+                </div>
+                <span id="custo-ads" class="font-bold text-blue-500 text-sm value-transition">R$ 0,00</span>
+            </div>
+
+            <div class="flex justify-between items-center border-t border-orange-200 pt-4">
+                <div class="flex items-center space-x-2">
+                    <span class="text-gray-700 font-bold uppercase text-sm">Lucro Real Final:</span>
+                    <div class="tooltip">
+                        <i class="fas fa-info-circle text-green-400 text-sm"></i>
+                        <span class="tooltiptext">Lucro após todas as taxas e custo de ads (se aplicável)</span>
+                    </div>
+                </div>
+                <span id="lucro-real" class="font-black text-green-600 text-2xl value-transition">R$ 0,00</span>
+            </div>
+        </div>
+
+        <div id="container-cenarios" class="mt-8 hidden">
+            <h3 class="text-sm font-black uppercase text-gray-500 mb-4 tracking-widest text-center">Opções para usar com Ads</h3>
+            <div id="lista-cenarios" class="space-y-3">
+                </div>
+            <p class="text-xs text-gray-400 mt-4 text-center">* Preços ajustados para manter seu lucro bruto mesmo pagando o Ads.</p>
+        </div>
+    </div>
+
+    <footer class="mt-8 text-center text-sm text-gray-500">
+        Desenvolvido por 
+        <a href="#" onclick="window.open('https://wa.me/5511937183232', '_blank', 'noopener,noreferrer'); return false;" class="text-orange-600 font-bold hover:underline transition">
+            BRP Soluções
+        </a>
+    </footer>
+
+    <script>
+        let tipoMargem = 'valor';
+        let tipoVendedor = 'cnpj';
+        const custoInput = document.getElementById('custo');
+        const lucroInput = document.getElementById('lucro');
+        const labelLucro = document.getElementById('label-lucro');
+        const lucroConvertido = document.getElementById('lucro-convertido');
+        const roasInput = document.getElementById('roas-input');
+        const volumePedidosCheck = document.getElementById('volume-pedidos');
+        const campanhaDestaqueCheck = document.getElementById('campanha-destaque');
+        const containerVolumePedidos = document.getElementById('container-volume-pedidos');
+        
+        const btnValor = document.getElementById('btn-valor');
+        const btnPorcentagem = document.getElementById('btn-porcentagem');
+        const btnCnpj = document.getElementById('btn-cnpj');
+        const btnCpf = document.getElementById('btn-cpf');
+
+        // Validação e sanitização de entrada
+        function sanitizarNumero(valor, min = 0, max = 1000000) {
+            const num = parseFloat(valor);
+            if (isNaN(num) || !isFinite(num)) return min;
+            return Math.max(min, Math.min(max, num));
+        }
+        
+        // Arredondamento para valores monetários
+        function arredondarMonetario(valor) {
+            return Math.round(valor * 100) / 100;
+        }
+        
+        // Sanitização de input sem modificar o valor durante digitação
+        function sanitizarInput(input) {
+            let valor = input.value;
+            if (valor.includes(',')) {
+                valor = valor.replace(',', '.');
+                if (!isNaN(valor)) {
+                    input.value = valor;
+                }
+            }
+            return valor;
+        }
+        
+        function validarInputs() {
+            const custo = sanitizarNumero(custoInput.value, 0.01, 1000000);
+            const lucroInfo = sanitizarNumero(lucroInput.value, 0, 1000000);
+            const erroCusto = document.getElementById('erro-custo');
+            const erroLucro = document.getElementById('erro-lucro');
+            
+            let valido = true;
+            
+            // Validação consistente: ambos devem ser >= 0, mas custo deve ser > 0
+            if (custo <= 0) {
+                erroCusto.classList.remove('hidden');
+                erroCusto.textContent = 'Valor deve ser maior que 0';
+                custoInput.classList.add('border-red-500');
+                valido = false;
+            } else {
+                erroCusto.classList.add('hidden');
+                custoInput.classList.remove('border-red-500');
+            }
+            
+            if (lucroInfo < 0) {
+                erroLucro.classList.remove('hidden');
+                erroLucro.textContent = 'Valor deve ser maior ou igual a 0';
+                lucroInput.classList.add('border-red-500');
+                valido = false;
+            } else {
+                erroLucro.classList.add('hidden');
+                lucroInput.classList.remove('border-red-500');
+            }
+            
+            return valido;
+        }
+
+        function copiarPreco(event) {
+            event.preventDefault();
+            const precoElement = document.getElementById('preco-venda');
+            const precoTexto = precoElement.innerText;
+            
+            // Usa API moderna primeiro, com fallback seguro
+            function copyToClipboard(text) {
+                if (navigator.clipboard && window.isSecureContext) {
+                    return navigator.clipboard.writeText(text).catch(() => {
+                        return fallbackCopy(text);
+                    });
+                } else {
+                    return fallbackCopy(text);
+                }
+            }
+            
+            function fallbackCopy(text) {
+                return new Promise((resolve, reject) => {
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    textArea.style.top = '-999999px';
+                    document.body.appendChild(textArea);
+                    
+                    try {
+                        textArea.select();
+                        const successful = document.execCommand('copy');
+                        if (successful) {
+                            resolve();
+                        } else {
+                            reject(new Error('Fallback copy failed'));
+                        }
+                    } catch (err) {
+                        reject(err);
+                    } finally {
+                        document.body.removeChild(textArea);
+                    }
+                });
+            }
+            
+            copyToClipboard(precoTexto).then(() => {
+                const btn = event.target.closest('button');
+                const icon = btn.querySelector('i');
+                icon.classList.remove('fa-copy');
+                icon.classList.add('fa-check');
+                
+                setTimeout(() => {
+                    icon.classList.remove('fa-check');
+                    icon.classList.add('fa-copy');
+                }, 2000);
+            }).catch(() => {
+                // Falha silenciosa ao copiar
+            });
+        }
+        
+        function setVendedor(tipo) {
+            tipoVendedor = tipo;
+            if (tipo === 'cnpj') {
+                btnCnpj.className = "flex-1 py-2 rounded-lg text-sm font-bold transition bg-white shadow-sm text-orange-600";
+                btnCpf.className = "flex-1 py-2 rounded-lg text-sm font-bold transition text-gray-500";
+                containerVolumePedidos.classList.add('hidden');
+            } else {
+                btnCpf.className = "flex-1 py-2 rounded-lg text-sm font-bold transition bg-white shadow-sm text-orange-600";
+                btnCnpj.className = "flex-1 py-2 rounded-lg text-sm font-bold transition text-gray-500";
+                containerVolumePedidos.classList.remove('hidden');
+            }
+            calcular();
+        }
+
+        function setTipo(tipo) {
+            tipoMargem = tipo;
+            if (tipo === 'valor') {
+                labelLucro.innerText = "Lucro Desejado (R$)";
+                lucroConvertido.classList.add('hidden');
+                btnValor.className = "flex-1 py-2 rounded-lg text-sm font-bold transition bg-white shadow-sm text-orange-600";
+                btnPorcentagem.className = "flex-1 py-2 rounded-lg text-sm font-bold transition text-gray-500";
+            } else {
+                labelLucro.innerText = "Margem Desejada (%)";
+                lucroConvertido.classList.remove('hidden');
+                btnPorcentagem.className = "flex-1 py-2 rounded-lg text-sm font-bold transition bg-white shadow-sm text-orange-600";
+                btnValor.className = "flex-1 py-2 rounded-lg text-sm font-bold transition text-gray-500";
+            }
+            calcular();
+        }
+
+        function calcularTaxas(precoVenda) {
+            let percentual = 0;
+            let taxaFixa = 0;
+            let detalhes = [];
+            let faixaCor = '';
+
+            // Define faixa de comissão baseada no preço
+            if (precoVenda <= 79.99) {
+                percentual = 0.20;
+                taxaFixa = 4.00;
+                faixaCor = 'text-red-600';
+                detalhes.push('<span class="font-bold text-red-600">20% + R$ 4,00</span> (até R$ 79,99)');
+            } else if (precoVenda <= 99.99) {
+                percentual = 0.14;
+                taxaFixa = 16.00;
+                faixaCor = 'text-orange-600';
+                detalhes.push('<span class="font-bold text-orange-600">14% + R$ 16,00</span> (R$ 80 a R$ 99,99)');
+            } else if (precoVenda <= 199.99) {
+                percentual = 0.14;
+                taxaFixa = 20.00;
+                faixaCor = 'text-yellow-600';
+                detalhes.push('<span class="font-bold text-yellow-600">14% + R$ 20,00</span> (R$ 100 a R$ 199,99)');
+            } else if (precoVenda <= 499.99) {
+                percentual = 0.14;
+                taxaFixa = 26.00;
+                faixaCor = 'text-blue-600';
+                detalhes.push('<span class="font-bold text-blue-600">14% + R$ 26,00</span> (R$ 200 a R$ 499,99)');
+            } else {
+                percentual = 0.14;
+                taxaFixa = 28.00;
+                faixaCor = 'text-green-600';
+                detalhes.push('<span class="font-bold text-green-600">14% + R$ 28,00</span> (acima de R$ 500,00)');
+            }
+
+            // Regra especial para produtos abaixo de R$ 8,00
+            if (precoVenda < 8.00) {
+                const taxaFixaLimitada = Math.min(taxaFixa, precoVenda / 2);
+                // Garante que a taxa fixa não exceda metade do preço
+                taxaFixa = Math.min(taxaFixaLimitada, precoVenda / 2);
+                // Garante taxa mínima de R$ 0,01 para produtos muito baratos
+                taxaFixa = Math.max(taxaFixa, 0.01);
+                detalhes.push('<span class="text-purple-600 font-bold">Taxa fixa limitada à metade do preço</span> (produto < R$ 8,00)');
+            }
+
+            // Taxa extra para CPF com alto volume
+            if (tipoVendedor === 'cpf' && volumePedidosCheck.checked) {
+                taxaFixa += 3.00;
+                detalhes.push('<span class="text-red-500 font-bold">+ R$ 3,00</span> (CPF +450 pedidos/90 dias)');
+            }
+
+            // Campanhas de destaque
+            if (campanhaDestaqueCheck.checked) {
+                percentual += 0.025;
+                detalhes.push('<span class="text-orange-500 font-bold">+ 2,5%</span> (Campanhas de Destaque)');
+            }
+
+            const taxaTotal = (precoVenda * percentual) + taxaFixa;
+            
+            // Validação adicional para garantir taxas positivas
+            if (taxaTotal < 0 || !isFinite(taxaTotal)) {
+                taxaTotal = Math.max(0, taxaFixa); // Fallback para taxa fixa apenas
+            }
+            
+            return {
+                total: taxaTotal,
+                percentual: percentual,
+                taxaFixa: taxaFixa,
+                detalhes: detalhes,
+                faixaCor: faixaCor
+            };
+        }
+        function calcular() {
+            if (!validarInputs()) {
+                document.getElementById('container-cenarios').classList.add('hidden');
+                return;
+            }
+            
+            const mainContainer = document.querySelector('.container-calculadora');
+            mainContainer.classList.add('loading');
+            
+            // Usa sanitização consistente com validação
+            const custo = sanitizarNumero(custoInput.value, 0.01, 1000000);
+            const lucroInfo = sanitizarNumero(lucroInput.value, 0, 1000000);
+            const roasAtual = roasInput.value.trim() === '' ? 0 : sanitizarNumero(roasInput.value, 0.01, 1000);
+            
+            let lucroEmDinheiro = (tipoMargem === 'valor') ? lucroInfo : custo * (lucroInfo / 100);
+            
+            if (tipoMargem === 'porcentagem') {
+                lucroConvertido.innerText = `(= ${lucroEmDinheiro.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'})})`;
+            }
+
+            // Cálculo iterativo melhorado com proteção contra divergência
+            let precoVendaBase = custo + lucroEmDinheiro + 10; // estimativa inicial
+            let tentativas = 0;
+            const maxTentativas = 100; // Aumentado para mais precisão
+            const epsilon = 0.01; // Precisão adequada para valores monetários
+            let precoAnterior = 0;
+            let oscillationCount = 0;
+            let convergiu = false;
+            
+            try {
+                while (tentativas < maxTentativas) {
+                    const taxas = calcularTaxas(precoVendaBase);
+                    const lucroEstimado = precoVendaBase - custo - taxas.total;
+                    
+                    // Verificação de convergência
+                    const diferenca = Math.abs(lucroEstimado - lucroEmDinheiro);
+                    const mudancaPreco = Math.abs(precoVendaBase - precoAnterior);
+                    
+                    // Convergência alcançada
+                    if (diferenca < epsilon && mudancaPreco < 0.001) {
+                        convergiu = true;
+                        break;
+                    }
+                    
+                    // Detecção de oscilação
+                    if (mudancaPreco < epsilon) {
+                        oscillationCount++;
+                        if (oscillationCount > 5) {
+                            break;
+                        }
+                    } else {
+                        oscillationCount = 0;
+                    }
+                    
+                    // Proteção contra valores inválidos
+                    if (isNaN(lucroEstimado) || !isFinite(lucroEstimado) || 
+                        isNaN(precoVendaBase) || !isFinite(precoVendaBase)) {
+                        precoVendaBase = custo + lucroEmDinheiro + 20;
+                        break;
+                    }
+                    
+                    // Ajuste fino do preço com proteção contra divisão por zero
+                    let ajuste = 0;
+                    if (taxas.percentual < 0.999) { // Margem de segurança mais conservadora
+                        ajuste = (lucroEmDinheiro - lucroEstimado) / (1 - taxas.percentual);
+                    } else {
+                        // Fallback para percentual alto
+                        ajuste = (lucroEmDinheiro - lucroEstimado) * 0.05;
+                    }
+                    
+                    // Proteção contra ajustes extremos
+                    if (!isFinite(ajuste) || isNaN(ajuste)) {
+                        break;
+                    }
+                    
+                    // Limitar ajuste para evitar instabilidade
+                    ajuste = Math.max(-50, Math.min(50, ajuste));
+                    
+                    precoAnterior = precoVendaBase;
+                    precoVendaBase += ajuste * 0.5; // Fator de amortecimento ajustado
+                    tentativas++;
+                }
+                
+                if (!convergiu && tentativas >= maxTentativas) {
+                    // Cálculo não convergiu, usando estimativa final
+                }
+                
+            } catch (error) {
+                precoVendaBase = custo + lucroEmDinheiro + 20; // Fallback seguro
+            }
+            
+            // Validação final do resultado
+            if (!isFinite(precoVendaBase) || precoVendaBase <= 0 || precoVendaBase > 1000000) {
+                mainContainer.classList.remove('loading');
+                document.getElementById('container-cenarios').classList.add('hidden');
+                return;
+            }
+            
+            const taxasFinais = calcularTaxas(precoVendaBase);
+            const margemBrutaBase = precoVendaBase - custo - taxasFinais.total;
+
+            if (precoVendaBase > 0 && custo > 0) {
+                // Animação CSS em vez de múltiplos setTimeout para melhor performance
+                const elementos = ['preco-venda', 'taxa-total', 'roas-ideal', 'custo-ads', 'lucro-real'];
+                elementos.forEach(id => {
+                    const elem = document.getElementById(id);
+                    elem.style.animation = 'none';
+                    setTimeout(() => {
+                        elem.style.animation = 'slideIn 0.3s ease-out';
+                    }, id === elementos[0] ? 0 : 50); // Pequeno delay para efeito cascata
+                });
+                
+                document.getElementById('preco-venda').innerText = precoVendaBase.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'});
+                document.getElementById('taxa-total').innerText = taxasFinais.total.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'});
+                document.getElementById('taxa-total').className = `font-bold ${taxasFinais.faixaCor}`;
+                
+                // Mostrar detalhes das taxas com animação (DOM seguro)
+                const detalhesTaxas = document.getElementById('detalhes-taxas');
+                detalhesTaxas.innerHTML = ''; // Limpa primeiro
+                
+                taxasFinais.detalhes.forEach(detalhe => {
+                    const div = document.createElement('div');
+                    div.className = 'slide-in';
+                    // Remove HTML e sanitiza completamente para XSS
+                    const textoLimpo = detalhe.replace(/<[^>]*>/g, '').replace(/[<>"']/g, '');
+                    div.textContent = '• ' + textoLimpo;
+                    detalhesTaxas.appendChild(div);
+                });
+
+                const breakEven = (margemBrutaBase > 0) ? (precoVendaBase / margemBrutaBase) : 0;
+                document.getElementById('roas-ideal').innerText = breakEven.toFixed(2) + "x";
+
+                // Custo de ads: só calcula se ROAS for informado (campo não vazio)
+                // Se ROAS estiver vazio, considera 0 (sem custo de publicidade)
+                let custoAds = 0;
+                if (roasAtual > 0) {
+                    custoAds = precoVendaBase / roasAtual;
+                }
+                // Lucro real é o lucro desejado - custo de ads (se houver)
+                let lucroFinal = lucroEmDinheiro - custoAds;
+                
+                // Validação dos valores finais
+                if (!isFinite(custoAds) || custoAds < 0) custoAds = 0;
+                if (!isFinite(lucroFinal)) lucroFinal = 0;
+
+                document.getElementById('custo-ads').innerText = custoAds.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'});
+                
+                // Destaca lucro negativo em vermelho
+                const lucroRealElement = document.getElementById('lucro-real');
+                lucroRealElement.innerText = lucroFinal.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'});
+                if (lucroFinal < 0) {
+                    lucroRealElement.className = 'font-black text-red-600 text-2xl value-transition';
+                } else {
+                    lucroRealElement.className = 'font-black text-green-600 text-2xl value-transition';
+                }
+
+                gerarCenarios(custo, lucroEmDinheiro, precoVendaBase);
+            } else {
+                document.getElementById('container-cenarios').classList.add('hidden');
+            }
+            
+            mainContainer.classList.remove('loading');
+        }
+
+        function gerarCenarios(custo, lucroAlvo, precoBase) {
+            const container = document.getElementById('container-cenarios');
+            const lista = document.getElementById('lista-cenarios');
+            container.classList.remove('hidden');
+            lista.innerHTML = '';
+
+            const incrementos = [0.10, 0.20, 0.30];
+
+            incrementos.forEach(inc => {
+                let novoPreco = precoBase * (1 + inc);
+                let novasTaxas = calcularTaxas(novoPreco);
+                let margemDisponivelParaAds = novoPreco - custo - novasTaxas.total - lucroAlvo;
+
+                let roasNecessario = "Inviável";
+                if (margemDisponivelParaAds > 0) {
+                    roasNecessario = (novoPreco / margemDisponivelParaAds).toFixed(1) + "x";
+                }
+
+                // Criação segura de elementos DOM
+                const div = document.createElement('div');
+                div.className = "flex justify-between items-center bg-gray-50 border border-gray-200 p-4 rounded-xl";
+                
+                // Container esquerdo
+                const containerEsquerdo = document.createElement('div');
+                containerEsquerdo.className = "flex flex-col";
+                
+                const labelPreco = document.createElement('span');
+                labelPreco.className = "text-sm text-gray-400 font-bold uppercase mb-1";
+                labelPreco.textContent = "Se vender por:";
+                containerEsquerdo.appendChild(labelPreco);
+                
+                const valorPreco = document.createElement('span');
+                valorPreco.className = "font-bold text-gray-700 text-lg";
+                valorPreco.textContent = novoPreco.toLocaleString('pt-br', {style: 'currency', currency: 'BRL'});
+                containerEsquerdo.appendChild(valorPreco);
+                
+                // Container direito
+                const containerDireito = document.createElement('div');
+                containerDireito.className = "text-right";
+                
+                const labelRoas = document.createElement('span');
+                labelRoas.className = "text-sm text-gray-400 font-bold uppercase block mb-1";
+                labelRoas.textContent = "ROAS Ideal:";
+                containerDireito.appendChild(labelRoas);
+                
+                const valorRoas = document.createElement('span');
+                valorRoas.className = "font-black text-orange-600 text-lg";
+                valorRoas.textContent = roasNecessario;
+                containerDireito.appendChild(valorRoas);
+                
+                // Montagem final
+                div.appendChild(containerEsquerdo);
+                div.appendChild(containerDireito);
+                lista.appendChild(div);
+            });
+        }
+
+        // Event listeners para cálculo em tempo real com sanitização segura
+        function adicionarEventListeners() {
+            const handlers = {
+                custo: () => {
+                    sanitizarInput(custoInput);
+                    calcular();
+                },
+                lucro: () => {
+                    sanitizarInput(lucroInput);
+                    calcular();
+                },
+                roas: () => {
+                    sanitizarInput(roasInput);
+                    // Validação adicional para ROAS - só aplica se o campo não estiver vazio
+                    const roasValue = roasInput.value.trim() === '' ? 0 : sanitizarNumero(roasInput.value, 0.01, 1000);
+                    if (roasInput.value.trim() !== '' && roasValue !== parseFloat(roasInput.value)) {
+                        roasInput.value = roasValue;
+                    }
+                    calcular();
+                },
+                volume: calcular,
+                campanha: calcular
+            };
+            
+            custoInput.addEventListener('input', handlers.custo);
+            lucroInput.addEventListener('input', handlers.lucro);
+            roasInput.addEventListener('input', handlers.roas);
+            volumePedidosCheck.addEventListener('change', handlers.volume);
+            campanhaDestaqueCheck.addEventListener('change', handlers.campanha);
+            
+            // Retorna função para limpeza
+            return () => {
+                custoInput.removeEventListener('input', handlers.custo);
+                lucroInput.removeEventListener('input', handlers.lucro);
+                roasInput.removeEventListener('input', handlers.roas);
+                volumePedidosCheck.removeEventListener('change', handlers.volume);
+                campanhaDestaqueCheck.removeEventListener('change', handlers.campanha);
+            };
+        }
+        
+        // Inicializa os event listeners
+        const limparEventListeners = adicionarEventListeners();
+        
+        // Limpeza automática quando a página for descarregada
+        window.addEventListener('beforeunload', limparEventListeners);
+    </script>
+</body>
+</html>
